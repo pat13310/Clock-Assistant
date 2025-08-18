@@ -1,0 +1,70 @@
+{
+  "window": {
+    "width": 570,
+    "height": 253,
+    "title": "Horloge Premium"
+  },
+  "api": {
+    "key": "0c412981a35ed28fc18aac9ef4715ab9",
+    "base_url": "http://api.openweathermap.org/data/2.5/weather?",
+    "city": "Paris"
+  },
+  "color_themes": {
+    "morning": {
+      "start": "#FFFACD",
+      "end": "#FFD700"
+    },
+    "afternoon": {
+      "start": "#E6E6FA",
+      "end": "#FFDAB9"
+    },
+    "evening": {
+      "start": "#FFB6C1",
+      "end": "#FF8C00"
+    },
+    "night": {
+      "start": "#191970",
+      "end": "#000000"
+    }
+  },
+  "frame_gradient": {
+    "start": "#3C3C3C",
+    "end": "#282828"
+  },
+  "fonts": {
+    "time": {
+      "family": "Segoe UI",
+      "size": 64,
+      "weight": "bold"
+    },
+    "date": {
+      "family": "Segoe UI",
+      "size": 20,
+      "weight": "normal"
+    },
+    "holiday": {
+      "family": "Segoe UI",
+      "size": 14,
+      "italic": true
+    },
+    "signature": {
+      "family": "Segoe UI",
+      "size": 10,
+      "color": "#6a5acd"
+    }
+  },
+  "texts": {
+    "holiday": "Ste Florence",
+    "signature": "by Xenatronics"
+  },
+  "effects": {
+    "shadows": true
+  },
+  "display": {
+    "signature": true,
+    "weather_bar": true
+  },
+  "weather": {
+    "refresh_minutes": 10
+  }
+}
