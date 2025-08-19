@@ -11,8 +11,8 @@
   },
   "color_themes": {
     "morning": {
-      "start": "#FFFACD",
-      "end": "#FFD700"
+      "start": "#f7a96a",
+      "end": "#FFD709"
     },
     "afternoon": {
       "start": "#E6E6FA",

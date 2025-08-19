@@ -1,4 +1,5 @@
 import sys
+import os
 import datetime
 import json
 import random
@@ -9,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QTimer, Qt, QPoint, QPropertyAnimation, QEasingCurve, QObject, QParallelAnimationGroup, Property, QSize
 from PySide6.QtGui import QFont, QPalette, QLinearGradient, QColor, QBrush, QPainter, QPen, QPolygonF, QIcon, QFontMetrics
-from PySide6.QtMultimedia import QSoundEffect
+from audio.mp3 import MP3Player
 
 # Import de la configuration
 from saints import SAINTS_DU_JOUR
@@ -340,10 +341,13 @@ class Horloge(QWidget):
         self.apply_config_to_ui()
 
         # Sons
-        self.tick_sound = QSoundEffect()
-        self.tick_sound.setSource("tick.mp3")  # fichier wav discret
-        self.period_sound = QSoundEffect()
-        self.period_sound.setSource("chime.mp3")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        tick_path = os.path.join(base_dir, "audio", "tick.mp3")
+        chime_path = os.path.join(base_dir, "audio", "chime.mp3")
+        self.tick_sound = MP3Player(tick_path)
+        self.period_sound = MP3Player(chime_path)
+        self.tick_sound.set_volume(50)
+        self.period_sound.set_volume(50)
 
         # Ombres sur les textes selon configuration
         self.apply_or_remove_text_shadows()
@@ -879,7 +883,7 @@ class Horloge(QWidget):
             #self.show_overlay_message("Changement de période")
             #self.period_sound.play()
 
-        if now.second == 0:  # Chaque minute
+        if now.hour == 0:  # Chaque heure
             self.tick_sound.play()
         # Récupérer les données météo (désormais via un timer dédié)
 
