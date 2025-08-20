@@ -1,7 +1,11 @@
 {
+  "frame": {
+    "side_width": 26,
+    "bottom_width": 46
+  },
   "window": {
     "width": 570,
-    "height": 253,
+    "height": 300,
     "title": "Horloge Premium"
   },
   "api": {
@@ -15,8 +19,8 @@
       "end": "#FFD709"
     },
     "afternoon": {
-      "start": "#E6E6FA",
-      "end": "#FFDAB9"
+      "end": "#f9a97a",
+      "start": "#FFDAB9"
     },
     "evening": {
       "start": "#FFB6C1",
@@ -57,14 +61,41 @@
     "holiday": "Ste Florence",
     "signature": "by Xenatronics"
   },
-  "effects": {
-    "shadows": true
-  },
   "display": {
     "signature": true,
     "weather_bar": true
   },
   "weather": {
     "refresh_minutes": 10
+  },
+  "effects": {
+    "signature_autofade": true,
+    "shadows": true,
+    "labels": {
+      "heure": {
+        "x": 3,
+        "y": 3,
+        "blur": 20,
+        "alpha": 210
+      },
+      "secondes": {
+        "x": 2,
+        "y": 2,
+        "blur": 15,
+        "alpha": 180
+      },
+      "date": {
+        "x": 1,
+        "y": 1,
+        "blur": 10,
+        "alpha": 150
+      },
+      "fete": {
+        "x": 2,
+        "y": 1,
+        "blur": 8,
+        "alpha": 200
+      }
+    }
   }
 }

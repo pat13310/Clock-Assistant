@@ -5,16 +5,29 @@ import json
 import random
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QVBoxLayout, QPushButton,
-    QHBoxLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
-    QGraphicsEffect, QDialog, QFormLayout, QLineEdit, QSpinBox, QDialogButtonBox, QCheckBox, QSizePolicy
+    QHBoxLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,QSizePolicy, QMessageBox
 )
-from PySide6.QtCore import QTimer, Qt, QPoint, QPropertyAnimation, QEasingCurve, QObject, QParallelAnimationGroup, Property, QSize
-from PySide6.QtGui import QFont, QPalette, QLinearGradient, QColor, QBrush, QPainter, QPen, QPolygonF, QIcon, QFontMetrics
+from PySide6.QtCore import QTimer, Qt, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, Property, QSize
+from PySide6.QtGui import QFont, QPalette, QLinearGradient, QColor, QBrush, QPainter, QPen, QIcon, QFontMetrics, QPainterPath
+from PySide6.QtSvg import QSvgRenderer
 from audio.mp3 import MP3Player
+
+# Classe pour créer un QLabel cliquable
+class ClickableLabel(QLabel):
+    from PySide6.QtCore import Signal
+    clicked = Signal()
+    
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 # Import de la configuration
 from saints import SAINTS_DU_JOUR
 from openweather import OpenWeather
+from settingsdialog import SettingsDialog
+from alarmdialog import AlarmManager, AlarmDialog
+#from relieflabel import ReliefLabel
 
 # Fonction pour charger la configuration depuis le fichier JSON
 def load_config():
@@ -32,6 +45,9 @@ COLOR_THEMES = CONFIG["color_themes"]
 FRAME_GRADIENT = CONFIG["frame_gradient"]
 FONTS = CONFIG["fonts"]
 TEXTS = CONFIG["texts"]
+FRAME_SIDE_WIDTH = CONFIG.get("frame", {}).get("side_width", 26)
+FRAME_BOTTOM_WIDTH = CONFIG.get("frame", {}).get("bottom_width", FRAME_SIDE_WIDTH)
+
 
 # Sauvegarde de la configuration dans le fichier JSON
 
@@ -39,140 +55,8 @@ def save_config(config):
     with open('clock/config.json', 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
-
-class SettingsDialog(QDialog):
-    def __init__(self, config, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Paramètres")
-        self.setWindowIcon(QIcon("clock/assets/settings.svg"))
-        self.setModal(True)
-        self._config = config
-        # Style semblable à l'horloge
-        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setMinimumSize(420, 300)
-        self.setStyleSheet("""
-            QDialog, QWidget#DialogBackground { background: transparent; }
-            QLabel { color: white; }
-            QLineEdit, QSpinBox {
-                background-color: rgba(0,0,0,120);
-                color: white;
-                border: 1px solid rgba(255,255,255,50);
-                border-radius: 4px;
-                padding: 2px 6px;
-            }
-            QCheckBox { color: white; }
-            QDialogButtonBox QPushButton {
-                background-color: #555;
-                color: white;
-                border-radius: 4px;
-                padding: 4px 10px;
-            }
-            QDialogButtonBox QPushButton:hover { background-color: #666; }
-        """)
-
-        form = QFormLayout(self)
-        form.setContentsMargins(20, 20, 20, 20)
-        form.setSpacing(8)
-        # Champs
-        self.title_edit = QLineEdit(config["window"].get("title", ""))
-        self.width_spin = QSpinBox()
-        self.width_spin.setRange(200, 8000)
-        self.width_spin.setValue(int(config["window"].get("width", 800)))
-        self.height_spin = QSpinBox()
-        self.height_spin.setRange(200, 8000)
-        self.height_spin.setValue(int(config["window"].get("height", 600)))
-        self.signature_edit = QLineEdit(config.get("texts", {}).get("signature", ""))
-
-        form.addRow("Titre", self.title_edit)
-        form.addRow("Largeur", self.width_spin)
-        form.addRow("Hauteur", self.height_spin)
-        form.addRow("Signature", self.signature_edit)
-        self.shadows_check = QCheckBox()
-        self.shadows_check.setChecked(bool(config.get("effects", {}).get("shadows", True)))
-        form.addRow("Ombre sur les textes", self.shadows_check)
-        self.show_signature_check = QCheckBox()
-        self.show_signature_check.setChecked(bool(config.get("display", {}).get("signature", True)))
-        form.addRow("Afficher la signature", self.show_signature_check)
-        # Rafraîchissement météo (minutes)
-        self.weather_refresh_spin = QSpinBox()
-        self.weather_refresh_spin.setRange(1, 180)
-        self.weather_refresh_spin.setValue(int(config.get("weather", {}).get("refresh_minutes", 10)))
-        form.addRow("Rafraîchissement météo (min)", self.weather_refresh_spin)
-        # Affichage de la barre météo
-        self.show_weather_bar_check = QCheckBox()
-        self.show_weather_bar_check.setChecked(bool(config.get("display", {}).get("weather_bar", True)))
-        form.addRow("Afficher la barre météo", self.show_weather_bar_check)
-        if parent is not None and hasattr(parent, "preview_weather_bar_visibility"):
-            self.show_weather_bar_check.toggled.connect(parent.preview_weather_bar_visibility)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Save).setText("Enregistrer")
-        buttons.button(QDialogButtonBox.Cancel).setText("Annuler")
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
-
-    def values(self):
-        return {
-            "title": self.title_edit.text(),
-            "width": int(self.width_spin.value()),
-            "height": int(self.height_spin.value()),
-            "signature": self.signature_edit.text(),
-            "shadows": bool(self.shadows_check.isChecked()),
-            "show_signature": bool(self.show_signature_check.isChecked()),
-            "weather_refresh_minutes": int(self.weather_refresh_spin.value()),
-            "show_weather_bar": bool(self.show_weather_bar_check.isChecked()),
-        }
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        now = datetime.datetime.now()
-        h = now.hour
-        if 6 <= h < 12:
-            start, end = COLOR_THEMES["morning"]["start"], COLOR_THEMES["morning"]["end"]
-        elif 12 <= h < 18:
-            start, end = COLOR_THEMES["afternoon"]["start"], COLOR_THEMES["afternoon"]["end"]
-        elif 18 <= h < 21:
-            start, end = COLOR_THEMES["evening"]["start"], COLOR_THEMES["evening"]["end"]
-        else:
-            start, end = COLOR_THEMES["night"]["start"], COLOR_THEMES["night"]["end"]
-
-        rect_inner = self.rect().adjusted(6, 6, -6, -6)
-        grad_inner = QLinearGradient(0, 0, 0, self.height())
-        grad_inner.setColorAt(0, QColor(start))
-        grad_inner.setColorAt(1, QColor(end))
-        painter.setBrush(grad_inner)
-        painter.setPen(QPen(QColor(30, 30, 30), 2))
-        painter.drawRoundedRect(rect_inner, 10, 10)
-
-        rect_ext = self.rect().adjusted(0, 0, -1, -1)
-        grad_border = QLinearGradient(0, 0, 0, self.height())
-        grad_border.setColorAt(0, QColor(FRAME_GRADIENT["start"]))
-        grad_border.setColorAt(1, QColor(FRAME_GRADIENT["end"]))
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QBrush(grad_border), 25))
-        painter.drawRoundedRect(rect_ext, 12, 12)
-
-
-class ReliefLabel(QLabel):
-    def paintEvent(self, event):
-        # Dessin de base (fond + texte normal via style)
-        super().paintEvent(event)
-        # Dessin du relief: liseré blanc en haut-gauche et ombre noire en bas-droite
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        rect = self.contentsRect()
-        align = self.alignment()
-        txt = self.text()
-        # Highlight (haut-gauche)
-        p.setPen(QPen(QColor(255, 255, 255, 200)))
-        p.drawText(rect.translated(1, 1), align, txt)
-        # Ombre (bas-droite)
-        p.setPen(QPen(QColor(0, 0, 0, 150)))
-        p.drawText(rect.translated(-1, -1), align, txt)
-
+pen_width_side = FRAME_SIDE_WIDTH       # épaisseur sur les côtés + haut
+pen_width_bottom = FRAME_BOTTOM_WIDTH   # épaisseur spécifique en bas
 
 class Horloge(QWidget):
     def __init__(self):
@@ -192,7 +76,7 @@ class Horloge(QWidget):
         # Layout principal
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignTop)
-        layout.setContentsMargins(12, 8, 12, 2)
+        layout.setContentsMargins(0, 25, 0, 30)
 
         # Heure
         self.label_heure = QLabel("--:--")
@@ -242,7 +126,7 @@ class Horloge(QWidget):
         font_fete = QFont(FONTS["holiday"]["family"], FONTS["holiday"]["size"])
         font_fete.setItalic(FONTS["holiday"]["italic"])
         self.label_fete.setFont(font_fete)
-        self.label_fete.setStyleSheet("color: #f2f2f2;")
+        self.label_fete.setStyleSheet("color: white;")
         # Garantir aucune troncature: hauteur minimale = métriques de police
         fm_fete_h = QFontMetrics(font_fete).height()
         self.label_fete.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -265,7 +149,7 @@ class Horloge(QWidget):
         self.label_meteo_info.setFont(font_meteo)
         self.label_meteo_info.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         #self.label_meteo_info.setMaximumWidth(int(WINDOW_WIDTH * 0.98))
-        self.label_meteo_info.setStyleSheet("font-weight: bold;background-color: rgba(255,255,255,70); color: #222; padding: 2px 12px; font-size: 11px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2);margin-top: 28px;")
+        self.label_meteo_info.setStyleSheet("font-weight: bold;background-color: rgba(255,255,255,70); color: #222; padding: 2px 12px; font-size: 11px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2);margin-top: 0px;")
 
         # Message temporaire (overlay)
         self.overlay_message = QLabel("", self)
@@ -286,9 +170,16 @@ class Horloge(QWidget):
         self.label_signature.setFont(QFont(FONTS["signature"]["family"], FONTS["signature"]["size"]))
         self.label_signature.setStyleSheet(f"color: {FONTS['signature']['color']};")
         self.label_signature.adjustSize()
-        self.label_signature.move(WINDOW_WIDTH - self.label_signature.width() - 10,
-                                  WINDOW_HEIGHT - self.label_signature.height() - 10)
+        sig_shadow = QGraphicsDropShadowEffect(self)
+        sig_shadow.setBlurRadius(10)
+        sig_shadow.setXOffset(0)
+        sig_shadow.setYOffset(0)
+        sig_shadow.setColor(QColor(0, 0, 0, 160))
+        self.label_signature.setGraphicsEffect(sig_shadow)
 
+        
+        self.position_signature()
+        
         # Conteneur pour stabiliser la hauteur de la ligne heure+secondes
         fm_h = QFontMetrics(font_heure).height()
         fm_s = QFontMetrics(font_secondes).height()
@@ -301,7 +192,7 @@ class Horloge(QWidget):
         layout.addWidget(self.date_container)
         layout.addWidget(self.fete_container)
         layout.addStretch()
-        layout.addWidget(self.label_meteo_info, 0, Qt.AlignHCenter | Qt.AlignBottom)
+        layout.addWidget(self.label_meteo_info, 0, Qt.AlignHCenter )
         self.setLayout(layout)
 
         # Bouton fermeture (icône SVG au lieu de la croix)
@@ -335,8 +226,17 @@ class Horloge(QWidget):
             QPushButton:hover { background-color: #333; }
         """)
         self.settings_button.setToolTip("Paramètres")
-        self.settings_button.move(WINDOW_WIDTH - 25 - 24, 2)
+        self.settings_button.move(WINDOW_WIDTH - 75, 2)
         self.settings_button.clicked.connect(self.open_settings)
+        self.thin=25
+        
+        # Gestionnaire d'alarmes
+        self.alarm_manager = AlarmManager()
+        self.alarm_manager.alarm_triggered.connect(self.on_alarm_triggered)
+        
+        # Créer le bouton d'alarme
+        self.create_alarm_button()
+        
         # Appliquer la configuration initiale (dont visibilité de la signature)
         self.apply_config_to_ui()
 
@@ -346,7 +246,7 @@ class Horloge(QWidget):
         chime_path = os.path.join(base_dir, "audio", "chime.mp3")
         self.tick_sound = MP3Player(tick_path)
         self.period_sound = MP3Player(chime_path)
-        self.tick_sound.set_volume(50)
+        self.tick_sound.set_volume(100)
         self.period_sound.set_volume(50)
 
         # Ombres sur les textes selon configuration
@@ -369,17 +269,33 @@ class Horloge(QWidget):
         self.apply_config_to_ui()
 
         # Signature auto fade
-        QTimer.singleShot(5000, self.start_fade_out)
+        if bool(CONFIG.get("effects", {}).get("signature_autofade", False)):
+            QTimer.singleShot(5000, self.start_fade_out)
 
-    def apply_text_shadow(self, label):
+    def position_signature(self):
+        sig_w = self.label_signature.width()
+        sig_h = self.label_signature.height()
+        x = (self.width() - sig_w) // 2
+        y = self.height() - FRAME_BOTTOM_WIDTH 
+        self.label_signature.move(x, y)
+
+
+    def apply_text_shadow(self, label, key):
+        shadow_cfg = CONFIG.get("effects", {}).get("labels", {}).get(key, {})
+        x = shadow_cfg.get("x", 3)
+        y = shadow_cfg.get("y", 3)
+        blur = shadow_cfg.get("blur", 20)
+        alpha = shadow_cfg.get("alpha", 210)
+
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setXOffset(3)
-        shadow.setYOffset(3)
-        shadow.setColor(QColor(0, 0, 0, 200))
+        shadow.setBlurRadius(blur)
+        shadow.setXOffset(x)
+        shadow.setYOffset(y)
+        shadow.setColor(QColor(0, 0, 0, alpha))
         label.setGraphicsEffect(shadow)
-        # Conserver une référence
+
         self._text_shadows[label] = shadow
+
 
     def start_fade_out(self):
         self.opacity_effect = QGraphicsOpacityEffect()
@@ -391,25 +307,22 @@ class Horloge(QWidget):
         anim.start()
 
     def apply_or_remove_text_shadows(self):
-        labels = [self.label_heure, self.label_secondes, self.label_date, self.label_fete]
+        mapping = {
+            "heure": self.label_heure,
+            "secondes": self.label_secondes,
+            "date": self.label_date,
+            "fete": self.label_fete
+        }
         enabled = bool(CONFIG.get("effects", {}).get("shadows", True))
-        for lbl in labels:
-            # Nettoyer l'effet courant
+
+        for key, lbl in mapping.items():
             lbl.setGraphicsEffect(None)
             if enabled:
-                self.apply_text_shadow(lbl)
+                self.apply_text_shadow(lbl, key)
             else:
-                # Supprimer la référence si existante
-                if hasattr(self, "_text_shadows") and lbl in self._text_shadows:
-                    try:
-                        del self._text_shadows[lbl]
-                    except Exception:
-                        pass
+                if lbl in self._text_shadows:
+                    del self._text_shadows[lbl]
             lbl.update()
-        # Effet relief assuré par ReliefLabel (pas de QGraphicsEffect ici)
-        if hasattr(self, 'label_meteo_info'):
-            self.label_meteo_info.setGraphicsEffect(None)
-            self.label_meteo_info.update()
 
     def apply_config_to_ui(self):
         """Applique la configuration en cours à l'interface (titre, taille, signature, positions)."""
@@ -420,8 +333,7 @@ class Horloge(QWidget):
         # Signature
         self.label_signature.setText(CONFIG["texts"].get("signature", ""))
         self.label_signature.adjustSize()
-        self.label_signature.move(w - self.label_signature.width() - 10,
-                                  h - self.label_signature.height() - 1)
+        self.position_signature()
         # Recalibrer la hauteur du conteneur heure+secondes
         try:
             fm_h = QFontMetrics(self.label_heure.font()).height()
@@ -466,6 +378,8 @@ class Horloge(QWidget):
         self.close_button.move(w - 25, 2)
         if hasattr(self, 'settings_button'):
             self.settings_button.move(w - 25 - 24, 2)
+        if hasattr(self, 'alarm_button'):
+            self.alarm_button.move(w - 25 - 24 - 24, 2)
         # Ombre portée
         self.apply_or_remove_text_shadows()
         # Redémarrer/arrêter le timer météo selon l'affichage de la barre
@@ -704,11 +618,7 @@ class Horloge(QWidget):
                         parts.append(f"Vent: {speed_kmh} km/h ({direction})")
                     else:
                         parts.append(f"Vent: {speed_kmh} km/h")
-            # Ajouter la signature en fin de barre si activée
-            if bool(CONFIG.get("display", {}).get("signature", True)):
-                sig_text = CONFIG.get("texts", {}).get("signature", "")
-                if sig_text:
-                    parts.append(sig_text)
+            
             if hasattr(self, "label_meteo_info"):
                 self.label_meteo_info.setText(" • ".join(parts))
             # Animation météo
@@ -883,7 +793,7 @@ class Horloge(QWidget):
             #self.show_overlay_message("Changement de période")
             #self.period_sound.play()
 
-        if now.hour == 0:  # Chaque heure
+        if now.second%59 == 0:  # Chaque heure
             self.tick_sound.play()
         # Récupérer les données météo (désormais via un timer dédié)
 
@@ -921,9 +831,12 @@ class Horloge(QWidget):
             theme = "night"
 
         start, end = COLOR_THEMES[theme]["start"], COLOR_THEMES[theme]["end"]
-
+        
         # --- Cadre interne ---
-        rect_inner = self.rect().adjusted(10, 20, -10, -10)
+        # --- Cadre interne équilibré ---
+
+        rect_inner = self.rect().adjusted(self.thin , self.thin , -self.thin, -self.thin )
+
         grad_inner = QLinearGradient(0, 0, 0, self.height())
         grad_inner.setColorAt(0, QColor(start))
         grad_inner.setColorAt(1, QColor(end))
@@ -932,22 +845,34 @@ class Horloge(QWidget):
         painter.setPen(QPen(QColor(30, 30, 30), 2))
         painter.drawRoundedRect(rect_inner, 10, 10)
 
-        # --- Cadre externe ---
-        pen_width = 20
+        # --- Cadre externe ---        
         rect_ext = self.rect().adjusted(
-            pen_width // 2,
-            pen_width // 2,
-            -(pen_width // 2) - 1,
-            -(pen_width // 2) - 1
+            pen_width_side // 2,               # gauche
+            pen_width_side // 2,               # haut
+            -(pen_width_side // 2) - 1,        # droite
+            -(pen_width_bottom // 2) - 1       # bas (plus large)
         )
-
         grad_border = QLinearGradient(0, 0, 0, self.height())
         grad_border.setColorAt(0, QColor(FRAME_GRADIENT["start"]))
         grad_border.setColorAt(1, QColor(FRAME_GRADIENT["end"]))
 
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QBrush(grad_border), pen_width))
-        painter.drawRoundedRect(rect_ext, 8, 8)
+        # Dessin d'un anneau aux bords intérieur/extérieur arrondis
+        outer_rect = rect_ext
+        inner_rect = rect_ext.adjusted(
+            pen_width_side,    # marge gauche
+            pen_width_side,    # marge haut
+            -pen_width_side,   # marge droite
+            -pen_width_bottom  # marge bas (plus grand)
+        )
+        path_outer = QPainterPath()
+        path_outer.addRoundedRect(outer_rect, 12, 12)
+        path_inner = QPainterPath()
+        path_inner.addRoundedRect(inner_rect, 8, 8)
+
+        ring_path = path_outer.subtracted(path_inner)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(grad_border))
+        painter.drawPath(ring_path)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -957,6 +882,155 @@ class Horloge(QWidget):
         if event.buttons() == Qt.LeftButton:
             self.move(event.globalPosition().toPoint() - self.drag_position)
 
+    def create_alarm_button(self):
+        """Crée le bouton d'alarme en haut à gauche de l'interface"""
+        # Créer le bouton d'alarme
+        self.alarm_button = QPushButton("", self)
+        self.alarm_button.setFixedSize(18, 18)
+        self.alarm_button.clicked.connect(self.open_alarm_dialog)
+        
+        # Charger l'icône SVG d'alarme
+        try:
+            self.alarm_button.setIcon(QIcon("clock/assets/alarm.svg"))
+            self.alarm_button.setIconSize(QSize(14, 14))
+        except Exception as e:
+            print(f"Erreur lors du chargement de l'icône d'alarme: {e}")
+            # Utiliser un texte de fallback si l'icône ne peut pas être chargée
+            self.alarm_button.setText("⏰")
+            self.alarm_button.setStyleSheet("font-size: 10px;")
+        
+        # Style du bouton
+        self.alarm_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FF6B35;
+                border-radius: 9px;
+                padding: 0;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover { 
+                background-color: #FF8C42; 
+            }
+            QPushButton:pressed { 
+                background-color: #E55A2B; 
+            }
+        """)
+        
+        self.alarm_button.setToolTip("Gestionnaire d'alarmes")
+        self.alarm_button.move(WINDOW_WIDTH - 25 - 24 - 24, 2)  # Position juste avant le bouton settings
+    
+    def open_alarm_dialog(self):
+        """Ouvre la boîte de dialogue de gestion des alarmes"""
+        try:
+            dialog = AlarmDialog(self.alarm_manager, self)
+            dialog.exec()
+        except Exception as e:
+            print(f"Erreur lors de l'ouverture de la boîte de dialogue d'alarme: {e}")
+            # Afficher un message d'erreur à l'utilisateur
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Erreur")
+            msg_box.setText(f"Impossible d'ouvrir le gestionnaire d'alarmes:\n{str(e)}")
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.exec()
+    
+    def on_alarm_triggered(self, alarm_data):
+        """Appelé quand une alarme se déclenche"""
+        alarm_name = alarm_data.get("name", "Alarme")
+        alarm_message = alarm_data.get("message", "")
+        
+        # Afficher un message à l'écran
+        if alarm_message:
+            display_message = f"🔔 {alarm_name}: {alarm_message}"
+        else:
+            display_message = f"🔔 {alarm_name}"
+        
+        self.show_alarm_notification(display_message)
+    
+    def show_alarm_notification(self, message):
+        """Affiche une notification d'alarme plus visible"""
+        # Créer un label pour la notification d'alarme
+        if not hasattr(self, 'alarm_notification'):
+            self.alarm_notification = ClickableLabel("", self)
+            self.alarm_notification.setAlignment(Qt.AlignCenter)
+            self.alarm_notification.setStyleSheet("""
+                QLabel {
+                    background-color: rgba(255, 0, 0, 200);
+                    color: white;
+                    border: 3px solid white;
+                    border-radius: 15px;
+                    padding: 15px 20px;
+                    font-size: 16px;
+                    font-weight: bold;
+                }
+                QLabel:hover {
+                    background-color: rgba(255, 50, 50, 220);
+                    cursor: pointer;
+                }
+            """)
+            self.alarm_notification.clicked.connect(self.on_alarm_notification_clicked)
+            self.alarm_notification.hide()
+        
+        # Mettre à jour le texte et afficher
+        self.alarm_notification.setText(message)
+        self.alarm_notification.adjustSize()
+        
+        # Centrer la notification
+        x = (self.width() - self.alarm_notification.width()) // 2
+        y = (self.height() - self.alarm_notification.height()) // 2
+        self.alarm_notification.move(x, y)
+        self.alarm_notification.show()
+        
+        # Ajouter un effet d'ombre
+        if not hasattr(self, '_alarm_shadow'):
+            self._alarm_shadow = QGraphicsDropShadowEffect(self)
+            self._alarm_shadow.setBlurRadius(20)
+            self._alarm_shadow.setXOffset(5)
+            self._alarm_shadow.setYOffset(5)
+            self._alarm_shadow.setColor(QColor(0, 0, 0, 200))
+            self.alarm_notification.setGraphicsEffect(self._alarm_shadow)
+        
+        # Animation de pulsation pour attirer l'attention
+        if hasattr(self, '_alarm_pulse_anim'):
+            self._alarm_pulse_anim.stop()
+        
+        # Créer l'effet d'opacité pour l'animation
+        if not hasattr(self, '_alarm_opacity_effect'):
+            self._alarm_opacity_effect = QGraphicsOpacityEffect(self.alarm_notification)
+        self.alarm_notification.setGraphicsEffect(self._alarm_opacity_effect)
+        
+        self._alarm_pulse_anim = QPropertyAnimation(self._alarm_opacity_effect, b"opacity", self)
+        self._alarm_pulse_anim.setDuration(1000)
+        self._alarm_pulse_anim.setStartValue(1.0)
+        self._alarm_pulse_anim.setKeyValueAt(0.5, 0.3)
+        self._alarm_pulse_anim.setEndValue(1.0)
+        self._alarm_pulse_anim.setLoopCount(5)  # Pulser 5 fois
+        self._alarm_pulse_anim.start()
+        
+        # La notification disparaît après 10 secondes
+        QTimer.singleShot(10000, self.hide_alarm_notification)
+    
+    def hide_alarm_notification(self):
+        """Cache la notification d'alarme"""
+        if hasattr(self, 'alarm_notification'):
+            self.alarm_notification.hide()
+        if hasattr(self, '_alarm_pulse_anim'):
+            self._alarm_pulse_anim.stop()
+    
+    def on_alarm_notification_clicked(self):
+        """Appelé quand l'utilisateur clique sur la notification d'alarme"""
+        # Arrêter l'alarme sonore
+        if hasattr(self, 'alarm_manager') and self.alarm_manager:
+            self.alarm_manager.stop_current_alarm()
+        
+        # Cacher immédiatement la notification
+        self.hide_alarm_notification()
+        
+        # Afficher un message de confirmation
+        self.show_overlay_message("Alarme arrêtée")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.position_signature()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

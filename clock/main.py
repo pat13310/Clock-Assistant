@@ -5,10 +5,11 @@ import math
 import pyttsx3
 import requests
 
-from PySide6.QtGui import QColor, QBrush, QFont, QLinearGradient, QRadialGradient, QPainterPath, QPen
+from PySide6.QtGui import QColor, QBrush, QFont, QLinearGradient, QRadialGradient, QPainterPath, QPen, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
-    QGraphicsRectItem, QGraphicsTextItem, QMainWindow, QGraphicsItem, QGraphicsDropShadowEffect, QGraphicsPathItem
+    QGraphicsRectItem, QGraphicsTextItem, QMainWindow, QGraphicsItem, QGraphicsDropShadowEffect, QGraphicsPathItem,
+    QGraphicsPixmapItem, QGraphicsProxyWidget, QPushButton, QMessageBox
 )
 from PySide6.QtCore import Qt, QTimer, QPointF, QPropertyAnimation, QObject, Property, QEasingCurve
 from PySide6.QtGui import QColor, QBrush, QFont, QLinearGradient
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import (
     QApplication, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QGraphicsRectItem, QGraphicsTextItem, QMainWindow
 )
+from PySide6.QtSvg import QSvgRenderer
+from alarmdialog import AlarmManager, AlarmDialog
 
 
 # ============================
@@ -560,6 +563,13 @@ class Horloge(QMainWindow):
         
         # Initialize background
         self.update_background("Matin")
+        
+        # Gestionnaire d'alarmes
+        self.alarm_manager = AlarmManager()
+        self.alarm_manager.alarm_triggered.connect(self.on_alarm_triggered)
+        
+        # Créer le bouton d'alarme
+        self.create_alarm_button()
 
         # Texte affiché (heure)
         self.text_item = QGraphicsTextItem("")
@@ -727,6 +737,159 @@ class Horloge(QMainWindow):
 
         # Message disparaît après 3s
         QTimer.singleShot(3000, lambda: self.scene.removeItem(msg))
+    
+    def create_alarm_button(self):
+        """Crée le bouton d'alarme en haut à droite de l'interface"""
+        # Créer le bouton d'alarme
+        self.alarm_button = QPushButton()
+        self.alarm_button.setFixedSize(50, 50)
+        self.alarm_button.clicked.connect(self.open_alarm_dialog)
+        
+        # Charger l'icône SVG d'alarme
+        try:
+            # Créer un renderer SVG
+            svg_renderer = QSvgRenderer("clock/assets/alarm.svg")
+            
+            # Créer un pixmap pour l'icône
+            pixmap = QPixmap(32, 32)
+            pixmap.fill(Qt.transparent)
+            
+            # Dessiner le SVG sur le pixmap
+            from PySide6.QtGui import QPainter
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            svg_renderer.render(painter)
+            painter.end()
+            
+            # Définir l'icône du bouton
+            self.alarm_button.setIcon(QIcon(pixmap))
+            self.alarm_button.setIconSize(pixmap.size())
+        except Exception as e:
+            print(f"Erreur lors du chargement de l'icône d'alarme: {e}")
+            # Utiliser un texte de fallback si l'icône ne peut pas être chargée
+            self.alarm_button.setText("⏰")
+        
+        # Style du bouton
+        self.alarm_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 100);
+                border: 2px solid rgba(255, 255, 255, 150);
+                border-radius: 25px;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 50);
+                border: 2px solid rgba(255, 255, 255, 200);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 100);
+            }
+        """)
+        
+        # Ajouter un effet d'ombre au bouton
+        shadow_effect = QGraphicsDropShadowEffect()
+        shadow_effect.setBlurRadius(10)
+        shadow_effect.setXOffset(3)
+        shadow_effect.setYOffset(3)
+        shadow_effect.setColor(QColor(0, 0, 0, 150))
+        self.alarm_button.setGraphicsEffect(shadow_effect)
+        
+        # Ajouter le bouton à la scène via un proxy widget
+        self.alarm_button_proxy = self.scene.addWidget(self.alarm_button)
+        self.alarm_button_proxy.setPos(720, 20)  # Position en haut à droite
+        
+        # S'assurer que le bouton reste au premier plan
+        self.alarm_button_proxy.setZValue(1000)
+    
+    def open_alarm_dialog(self):
+        """Ouvre la boîte de dialogue de gestion des alarmes"""
+        try:
+            dialog = AlarmDialog(self.alarm_manager, self)
+            dialog.exec()
+        except Exception as e:
+            print(f"Erreur lors de l'ouverture de la boîte de dialogue d'alarme: {e}")
+            # Afficher un message d'erreur à l'utilisateur
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Erreur")
+            msg_box.setText(f"Impossible d'ouvrir le gestionnaire d'alarmes:\n{str(e)}")
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.exec()
+    
+    def on_alarm_triggered(self, alarm_data):
+        """Appelé quand une alarme se déclenche"""
+        alarm_name = alarm_data.get("name", "Alarme")
+        alarm_message = alarm_data.get("message", "")
+        
+        # Afficher un message à l'écran
+        if alarm_message:
+            display_message = f"🔔 {alarm_name}\n{alarm_message}"
+        else:
+            display_message = f"🔔 {alarm_name}"
+        
+        self.show_alarm_notification(display_message)
+        
+        # Synthèse vocale pour l'alarme
+        try:
+            voice_message = f"Alarme: {alarm_name}"
+            if alarm_message:
+                voice_message += f". {alarm_message}"
+            self.engine.say(voice_message)
+            self.engine.runAndWait()
+        except RuntimeError:
+            # La boucle est déjà en cours d'exécution, ignorer l'erreur
+            pass
+    
+    def show_alarm_notification(self, message):
+        """Affiche une notification d'alarme plus visible"""
+        # Créer un cadre pour la notification d'alarme
+        notification_path = QPainterPath()
+        notification_path.addRoundedRect(150, 150, 500, 180, 15, 15)
+        notification_frame = QGraphicsPathItem(notification_path)
+        notification_frame.setBrush(QBrush(QColor(255, 0, 0, 200)))  # Rouge semi-transparent
+        notification_frame.setPen(QPen(QColor(255, 255, 255, 255), 3))  # Bordure blanche
+        
+        # Ajouter un effet d'ombre à la notification
+        notification_shadow = QGraphicsDropShadowEffect()
+        notification_shadow.setBlurRadius(20)
+        notification_shadow.setXOffset(5)
+        notification_shadow.setYOffset(5)
+        notification_shadow.setColor(QColor(0, 0, 0, 200))
+        notification_frame.setGraphicsEffect(notification_shadow)
+        
+        self.scene.addItem(notification_frame)
+        
+        # Texte de la notification
+        notification_text = QGraphicsTextItem(message)
+        notification_text.setDefaultTextColor(Qt.white)
+        notification_text.setFont(QFont("Arial", 20, QFont.Bold))
+        notification_text.setPos(170, 200)
+        
+        # Ajouter un effet d'ombre au texte
+        text_shadow = QGraphicsDropShadowEffect()
+        text_shadow.setBlurRadius(5)
+        text_shadow.setXOffset(2)
+        text_shadow.setYOffset(2)
+        text_shadow.setColor(QColor(0, 0, 0, 200))
+        notification_text.setGraphicsEffect(text_shadow)
+        
+        self.scene.addItem(notification_text)
+        
+        # Animation de pulsation pour attirer l'attention
+        pulse_anim = QPropertyAnimation(notification_frame, b"opacity")
+        pulse_anim.setDuration(1000)
+        pulse_anim.setStartValue(1.0)
+        pulse_anim.setKeyValueAt(0.5, 0.5)
+        pulse_anim.setEndValue(1.0)
+        pulse_anim.setLoopCount(5)  # Pulser 5 fois
+        pulse_anim.start()
+        
+        # La notification disparaît après 10 secondes
+        QTimer.singleShot(10000, lambda: [
+            self.scene.removeItem(notification_frame),
+            self.scene.removeItem(notification_text)
+        ])
 
 
 # ============================
